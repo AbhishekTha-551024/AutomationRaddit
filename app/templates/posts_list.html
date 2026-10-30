@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}Posts - Social Media Post Scheduler{% endblock %}
+
+{% block content %}
+<div class="posts-page">
+
+  <!-- Header -->
+  <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;">
+    <div>
+      <h1 class="page-title" style="font-size: 1.5rem; font-weight: 700;">Posts</h1>
+      <p class="text-secondary" style="font-size: 0.875rem;">Manage scheduled, draft, and published posts across all platforms.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <a href="/posts/new" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        <span>New post</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Filter and Search Toolbar -->
+  <div class="card" style="padding: 1rem; margin-bottom: 1.25rem;">
+    <form method="GET" action="/posts" id="filter-form" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
+      <!-- Search Input -->
+      <div style="flex: 1; min-width: 200px;">
+        <input 
+          type="text" 
+          name="search" 
+          value="{{ search }}" 
+          placeholder="Search by title or text..." 
+          class="form-input" 
+          style="width: 100%;"
+        >
+      </div>
+
+      <!-- Status Filter -->
+      <div style="min-width: 140px;">
+        <select name="status" class="form-input" onchange="this.form.submit()" style="width: 100%;">
+          <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All statuses</option>
+          <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Scheduled (pending)</option>
+          <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Drafts</option>
+          <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+          <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+          <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        </select>
+      </div>
+
+      <!-- Platform Filter -->
+      <div style="min-width: 140px;">
+        <select name="platform" class="form-input" onchange="this.form.submit()" style="width: 100%;">
+          <option value="all" {% if platform_filter == 'all' %}selected{% endif %}>All platforms</option>
+          {% for p in supported_platforms %}
+          <option value="{{ p }}" {% if platform_filter == p %}selected{% endif %}>{{ p|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Date Range (From and To) -->
+      <div style="display: flex; align-items: center; gap: 0.25rem;">
+        <input 
+          type="date" 
+          name="date_from" 
+          value="{{ date_from }}" 
+          class="form-input" 
+          title="From scheduled date"
+          style="font-size: 0.8125rem; padding: 0.4rem 0.5rem;"
+        >
+        <span style="font-size: 0.75rem; color: var(--text-muted);">&ndash;</span>
+        <input 
+          type="date" 
+          name="date_to" 
+          value="{{ date_to }}" 
+          class="form-input" 
+          title="To scheduled date"
+          style="font-size: 0.8125rem; padding: 0.4rem 0.5rem;"
+        >
+      </div>
+
+      <!-- Sort Filter -->
+      <div style="min-width: 160px;">
+        <select name="sort" class="form-input" onchange="this.form.submit()" style="width: 100%;">
+          <option value="scheduled_desc" {% if sort_by == 'scheduled_desc' %}selected{% endif %}>Schedule: Newest first</option>
+          <option value="scheduled_asc" {% if sort_by == 'scheduled_asc' %}selected{% endif %}>Schedule: Oldest first</option>
+          <option value="created_desc" {% if sort_by == 'created_desc' %}selected{% endif %}>Created: Newest first</option>
+          <option value="created_asc" {% if sort_by == 'created_asc' %}selected{% endif %}>Created: Oldest first</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn btn-secondary">Filter</button>
+      {% if search or status_filter != 'all' or platform_filter != 'all' or sort_by != 'scheduled_desc' or date_from or date_to %}
+      <a href="/posts" class="btn btn-outline" style="text-decoration:none;">Reset</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- Posts Table Card -->
+  <div class="card" style="padding: 0; overflow: visible;">
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Title / Content</th>
+            <th style="width: 170px;">Platforms</th>
+            <th style="width: 170px;">Scheduled (IST)</th>
+            <th style="width: 130px;">Overall status</th>
+            <th style="width: 60px; text-align: right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if items|length == 0 %}
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-secondary);">
+              No posts found matching the current filters.
+            </td>
+          </tr>
+          {% else %}
+          {% for item in items %}
+          <tr id="row-post-{{ item.id }}">
+            <td>
+              <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">
+                <a href="/posts/{{ item.id }}/view" style="color: inherit; text-decoration: none;">
+                  {% if item.title %}<strong>{{ item.title }}</strong> — {% endif %}
+                  {{ item.body|truncate(75) }}
+                </a>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">
+                Post #{{ item.id }} &bull; Created {{ item.created_at_ist }}
+                {% if item.edited_at_ist %}&bull; Edited {{ item.edited_at_ist }}{% endif %}
+              </div>
+              {% if item.friendly_error %}
+              <div style="font-size: 0.75rem; color: var(--status-failed-text); margin-top: 4px;">
+                <strong>{{ item.friendly_error.title }}:</strong> {{ item.friendly_error.message }}
+              </div>
+              {% endif %}
+            </td>
+
+            <!-- Platforms with status icon per platform -->
+            <td>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.375rem;">
+                {% for p in item.platforms %}
+                <span class="badge" title="{{ p.platform|capitalize }} ({{ p.status }})" style="padding: 0.15rem 0.4rem; font-size: 0.7rem;">
+                  {% if p.status == 'posted' %}
+                    <span style="color: var(--status-posted-text);">●</span>
+                  {% elif p.status == 'failed' %}
+                    <span style="color: var(--status-failed-text);">●</span>
+                  {% elif p.status == 'processing' %}
+                    <span style="color: var(--status-sending-text);">●</span>
+                  {% elif p.status == 'cancelled' %}
+                    <span style="color: var(--text-muted);">●</span>
+                  {% elif p.status == 'draft' %}
+                    <span style="color: var(--text-secondary);">●</span>
+                  {% else %}
+                    <span style="color: var(--status-scheduled-text);">●</span>
+                  {% endif %}
+                  <span style="text-transform: capitalize; margin-left: 2px;">{{ p.platform }}</span>
+                </span>
+                {% endfor %}
+              </div>
+            </td>
+
+            <!-- Scheduled time -->
+            <td>
+              <div style="font-size: 0.8125rem;">{{ item.scheduled_at_ist }}</div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">{{ item.relative_time }}</div>
+            </td>
+
+            <!-- Overall status badge (Icon + Text) -->
+            <td>
+              {% if item.overall_status == 'pending' %}
+                <span class="badge badge-scheduled">
+                  <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                  <span>Scheduled</span>
+                </span>
+              {% elif item.overall_status == 'draft' %}
+                <span class="badge badge-draft">
+                  <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                  <span>Draft</span>
+                </span>
+              {% elif item.overall_status == 'posted' %}
+                <span class="badge badge-posted">
+                  <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>Posted</span>
+                </span>
+              {% elif item.overall_status == 'failed' %}
+                <span class="badge badge-failed">
+                  <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                  <span>Failed</span>
+                </span>
+              {% elif item.overall_status == 'cancelled' %}
+                <span class="badge badge-cancelled">
+                  <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  <span>Cancelled</span>
+                </span>
+              {% elif item.overall_status == 'processing' %}
+                <span class="badge badge-sending">
+                  <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line></svg>
+                  <span>Sending</span>
+                </span>
+              {% endif %}
+            </td>
+
+            <!-- Keyboard Accessible Action Menu -->
+            <td style="text-align: right; position: relative;">
+              <div class="action-dropdown">
+                <button 
+                  type="button" 
+                  class="action-dropdown-btn" 
+                  aria-haspopup="true" 
+                  aria-expanded="false" 
+                  aria-label="Actions for post #{{ item.id }}"
+                  onclick="toggleActionMenu(event, 'menu-post-{{ item.id }}')"
+                  onkeydown="handleMenuButtonKey(event, 'menu-post-{{ item.id }}')"
+                >
+                  &bull;&bull;&bull;
+                </button>
+                <div id="menu-post-{{ item.id }}" class="action-menu" role="menu">
+                  <a href="/posts/{{ item.id }}/view" class="action-menu-item" role="menuitem" tabindex="0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <span>View details</span>
+                  </a>
+
+                  <!-- Draft Actions -->
+                  {% if item.overall_status == 'draft' %}
+                  <a href="/posts/{{ item.id }}/edit" class="action-menu-item" role="menuitem" tabindex="0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    <span>Edit</span>
+                  </a>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="openRescheduleModal({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    <span>Schedule</span>
+                  </button>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="duplicatePost({{ item.id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span>Duplicate</span>
+                  </button>
+                  <button type="button" class="action-menu-item danger" role="menuitem" tabindex="0" onclick="deleteItem('post', {{ item.id }}, 'draft')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span>Delete</span>
+                  </button>
+
+                  <!-- Pending Actions -->
+                  {% elif item.overall_status == 'pending' %}
+                  <a href="/posts/{{ item.id }}/edit" class="action-menu-item" role="menuitem" tabindex="0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    <span>Edit</span>
+                  </a>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="openRescheduleModal({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    <span>Reschedule</span>
+                  </button>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="postTargetNow({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span>Post now</span>
+                  </button>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="cancelTarget({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <span>Cancel</span>
+                  </button>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="duplicatePost({{ item.id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span>Duplicate</span>
+                  </button>
+                  <button type="button" class="action-menu-item danger" role="menuitem" tabindex="0" onclick="deleteItem('post', {{ item.id }}, 'pending')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span>Delete</span>
+                  </button>
+
+                  <!-- Processing Actions -->
+                  {% elif item.overall_status == 'processing' %}
+                  <div style="padding: 0.5rem 0.875rem; font-size: 0.75rem; color: var(--status-sending-text);">
+                    This post is being sent right now. Try again in a moment.
+                  </div>
+
+                  <!-- Failed Actions -->
+                  {% elif item.overall_status == 'failed' %}
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="retryTarget({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    <span>Retry now</span>
+                  </button>
+                  <a href="/posts/{{ item.id }}/edit" class="action-menu-item" role="menuitem" tabindex="0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    <span>Edit & retry</span>
+                  </a>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="openRescheduleModal({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    <span>Reschedule</span>
+                  </button>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="duplicatePost({{ item.id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span>Duplicate</span>
+                  </button>
+                  <button type="button" class="action-menu-item danger" role="menuitem" tabindex="0" onclick="deleteItem('post', {{ item.id }}, 'failed')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span>Delete</span>
+                  </button>
+
+                  <!-- Posted Actions -->
+                  {% elif item.overall_status == 'posted' %}
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="duplicatePost({{ item.id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span>Duplicate</span>
+                  </button>
+                  <button type="button" class="action-menu-item danger" role="menuitem" tabindex="0" onclick="deleteItem('post', {{ item.id }}, 'posted')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span>Delete</span>
+                  </button>
+
+                  <!-- Cancelled Actions -->
+                  {% elif item.overall_status == 'cancelled' %}
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="restoreTarget({{ item.primary_target_id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                    <span>Restore</span>
+                  </button>
+                  <button type="button" class="action-menu-item" role="menuitem" tabindex="0" onclick="duplicatePost({{ item.id }})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span>Duplicate</span>
+                  </button>
+                  <button type="button" class="action-menu-item danger" role="menuitem" tabindex="0" onclick="deleteItem('post', {{ item.id }}, 'cancelled')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span>Delete</span>
+                  </button>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination Footer (25 items per page) -->
+    {% if total_pages > 1 %}
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1rem; border-top: 1px solid var(--border-subtle); font-size: 0.8125rem;">
+      <span class="text-secondary">Page {{ current_page }} of {{ total_pages }} ({{ total_count }} total posts)</span>
+      <div style="display: flex; gap: 0.5rem;">
+        {% if current_page > 1 %}
+        <a href="/posts?page={{ current_page - 1 }}&status={{ status_filter }}&platform={{ platform_filter }}&search={{ search }}&sort={{ sort_by }}&date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-sm btn-secondary">Previous</a>
+        {% endif %}
+        {% if current_page < total_pages %}
+        <a href="/posts?page={{ current_page + 1 }}&status={{ status_filter }}&platform={{ platform_filter }}&search={{ search }}&sort={{ sort_by }}&date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-sm btn-secondary">Next</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

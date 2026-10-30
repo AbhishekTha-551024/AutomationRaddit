@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Post #{{ post.id }} | Social Media Post Scheduler{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1.25rem;">
+  <a href="/posts" style="display: inline-flex; align-items: center; gap: 0.375rem; color: var(--text-secondary); font-size: 0.8125rem;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="15 18 9 12 15 6"></polyline>
+    </svg>
+    <span>Back to posts</span>
+  </a>
+</div>
+
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;">
+  <div>
+    <h1 class="page-title">{{ post.title or "Post #" ~ post.id }}</h1>
+    <p class="page-subtitle">
+      Created {{ post.created_at_ist }}
+      {% if post.edited_at_ist %}&bull; Edited {{ post.edited_at_ist }}{% endif %}
+      {% if post.deleted_at %}&bull; <span style="color: var(--status-failed-text);">In Trash</span>{% endif %}
+    </p>
+  </div>
+  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <button type="button" id="copy-post-text-btn" class="btn btn-secondary btn-sm" data-copy-content="{{ post.body }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span>Copy text</span>
+    </button>
+    <a href="/posts/{{ post.id }}/edit" class="btn btn-secondary btn-sm">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+      </svg>
+      <span>Edit</span>
+    </a>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="duplicatePost({{ post.id }})">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span>Duplicate</span>
+    </button>
+    <button type="button" class="btn btn-danger btn-sm" onclick="openDeleteModal('post', {{ post.id }}, 'active')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+      <span>Delete post</span>
+    </button>
+  </div>
+</div>
+
+<!-- Post Content Display -->
+<div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
+  {% if post.media_url %}
+  <div style="margin-bottom: 1rem;">
+    <img src="{{ post.media_url }}" alt="Media" style="max-height: 240px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); object-fit: cover;">
+  </div>
+  {% endif %}
+  <div class="post-detail-content" style="white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">{{ post.body }}</div>
+</div>
+
+<!-- Targets Table -->
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-title">
+    <span>Target platforms & dispatch status</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Status</th>
+          <th>Scheduled (IST)</th>
+          <th>Attempts</th>
+          <th>Next Retry</th>
+          <th>External ID / Details</th>
+          <th style="text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for target in post.targets %}
+        <tr id="row-target-{{ target.id }}">
+          <td>
+            <strong style="text-transform: capitalize;">{{ target.platform }}</strong>
+          </td>
+          <td>
+            {% if target.status == 'posted' %}
+            <span class="badge badge-posted">
+              <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Posted</span>
+            </span>
+            {% elif target.status == 'failed' %}
+            <span class="badge badge-failed">
+              <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+              <span>Failed</span>
+            </span>
+            {% elif target.status == 'processing' %}
+            <span class="badge badge-sending">
+              <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line></svg>
+              <span>Sending...</span>
+            </span>
+            {% elif target.status == 'cancelled' %}
+            <span class="badge badge-cancelled">
+              <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <span>Cancelled</span>
+            </span>
+            {% elif target.status == 'draft' %}
+            <span class="badge badge-draft">
+              <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              <span>Draft</span>
+            </span>
+            {% else %}
+            <span class="badge badge-scheduled">
+              <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span>Scheduled</span>
+            </span>
+            {% endif %}
+          </td>
+          <td style="white-space: nowrap; font-size: 0.75rem;">
+            {{ target.scheduled_at_ist }}
+          </td>
+          <td style="font-family: var(--font-mono); font-size: 0.75rem;">
+            {{ target.attempts }}/3
+          </td>
+          <td style="font-size: 0.75rem; color: var(--text-secondary);">
+            {{ target.next_retry_at_ist or "—" }}
+          </td>
+          <td>
+            {% if target.external_post_id %}
+            <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary);">
+              ID: {{ target.external_post_id }}
+            </span>
+            {% if target.publish_state %}
+            <div style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">
+              Parts: {{ target.publish_state }}
+            </div>
+            {% endif %}
+            {% elif target.friendly_error %}
+            <div style="color: var(--status-failed-text); font-size: 0.75rem;">
+              <strong>{{ target.friendly_error.title }}:</strong> {{ target.friendly_error.message }}
+            </div>
+            {% elif target.error_message %}
+            <span style="color: var(--status-failed-text); font-size: 0.75rem;">
+              {{ target.error_message }}
+            </span>
+            {% else %}
+            <span style="color: var(--text-muted); font-size: 0.75rem;">—</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right; white-space: nowrap;">
+            <div style="display: inline-flex; gap: 0.25rem;">
+              {% if target.status == 'failed' %}
+              <button type="button" class="btn btn-sm btn-danger-outline" onclick="retryTarget({{ target.id }})">
+                Retry
+              </button>
+              {% endif %}
+
+              {% if target.status in ['pending', 'failed', 'cancelled'] %}
+              <button type="button" class="btn btn-sm btn-secondary" onclick="postTargetNow({{ target.id }})">
+                Post now
+              </button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="openRescheduleModal({{ target.id }})">
+                Reschedule
+              </button>
+              {% endif %}
+
+              {% if target.status == 'pending' %}
+              <button type="button" class="btn btn-sm btn-outline" onclick="cancelTarget({{ target.id }})">
+                Cancel
+              </button>
+              {% endif %}
+
+              {% if target.status != 'processing' %}
+              <button type="button" class="btn btn-sm btn-outline" onclick="openDeleteModal('target', {{ target.id }}, '{{ target.status }}')">
+                Delete
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Vertical Execution & Audit Log Timeline -->
+<div class="card">
+  <div class="card-title">
+    <span>Execution & audit history</span>
+    <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Chronological (oldest first)</span>
+  </div>
+
+  {% if logs and logs|length > 0 %}
+  <div class="timeline">
+    {% for log in logs %}
+    <div class="timeline-item">
+      <div class="timeline-dot {% if log.level == 'ERROR' %}error{% elif log.level == 'WARNING' %}warning{% endif %}"></div>
+      <div class="timeline-time">{{ log.created_at_ist }} &bull; [{{ log.level }}]</div>
+      <div class="timeline-msg" style="{% if log.level == 'ERROR' %}color: var(--status-failed-text); font-weight: 500;{% endif %}">
+        {{ log.message }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 0.8125rem;">No execution logs recorded yet for this post.</p>
+  {% endif %}
+</div>
+{% endblock %}

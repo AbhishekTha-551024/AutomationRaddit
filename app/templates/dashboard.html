@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Social Media Post Scheduler{% endblock %}
+
+{% block content %}
+<div id="dashboard-root">
+
+  <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+    <div>
+      <h1 class="page-title">Dashboard</h1>
+      <p class="page-subtitle">Your upcoming schedule and recent dispatch activity.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <a href="/posts/new" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        <span>New post</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Failed Posts Section (Appears ONLY when there are failed targets) -->
+  {% if failed_targets and failed_targets|length > 0 %}
+  <section class="failed-alert-banner" aria-label="Failed Posts Requiring Attention" style="margin-bottom: 1.5rem;">
+    <div class="failed-alert-header">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>{{ failed_targets|length }} post target(s) failed</span>
+      </div>
+    </div>
+
+    <div class="failed-items-list">
+      {% for ft in failed_targets %}
+      <div class="failed-item" id="failed-item-{{ ft.id }}">
+        <div class="failed-item-info">
+          <strong>{{ ft.platform|capitalize }}</strong> — {{ ft.post_title or ft.post_body[:50] or "Untitled Post" }}
+          <div style="margin-top: 2px;">
+            <strong style="color: var(--status-failed-text); font-size: 0.8125rem;">{{ ft.friendly_error.title }}:</strong>
+            <span style="font-size: 0.8125rem;">{{ ft.friendly_error.message }}</span>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+            Tip: {{ ft.friendly_error.suggestion }} (Attempt {{ ft.attempts }}/3)
+          </div>
+        </div>
+        <div style="display: flex; gap: 0.375rem; flex-shrink: 0;">
+          <button type="button" class="btn btn-danger-outline btn-sm" onclick="retryTarget({{ ft.id }})">
+            Retry now
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="openRescheduleModal({{ ft.id }})">
+            Reschedule
+          </button>
+          <button type="button" class="btn btn-sm btn-outline" onclick="deleteItem('target', {{ ft.id }}, 'failed')">
+            Delete
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Quiet Summary Counts -->
+  <div class="stats-strip" style="margin-bottom: 1.5rem;">
+    <div class="stat-item">
+      <span class="stat-number">{{ stats.pending }}</span>
+      <span class="stat-label">Scheduled</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{ stats.posted }}</span>
+      <span class="stat-label">Posted</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number" style="color: {% if stats.failed > 0 %}var(--status-failed-text){% else %}inherit{% endif %}">
+        {{ stats.failed }}
+      </span>
+      <span class="stat-label">Failed</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{ stats.draft or 0 }}</span>
+      <span class="stat-label">Drafts</span>
+    </div>
+    <div class="stat-item" style="margin-left: auto;">
+      <span class="stat-number">{{ stats.total }}</span>
+      <span class="stat-label">Total Targets</span>
+    </div>
+  </div>
+
+  <!-- Up Next: Next 5 Scheduled Posts -->
+  <div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-title">
+      <span>Up next</span>
+      <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">Next 5 due posts</span>
+    </div>
+
+    {% if up_next and up_next|length > 0 %}
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Scheduled (IST)</th>
+            <th>Platform</th>
+            <th>Post Content</th>
+            <th>Status</th>
+            <th style="text-align: right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in up_next %}
+          <tr>
+            <td style="white-space: nowrap;">
+              <strong>{{ item.relative_time }}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">{{ item.scheduled_at_ist }}</div>
+            </td>
+            <td>
+              <span style="font-weight: 500; text-transform: capitalize;">{{ item.platform }}</span>
+            </td>
+            <td>
+              <a href="/posts/{{ item.post_id }}/view" style="font-weight: 500;">
+                {{ item.post_title or item.post_body[:60] }}
+              </a>
+            </td>
+            <td>
+              {% if item.is_overdue %}
+              <span class="badge badge-overdue">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 14 14"></polyline>
+                </svg>
+                <span>Overdue</span>
+              </span>
+              {% else %}
+              <span class="badge badge-scheduled">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>Scheduled</span>
+              </span>
+              {% endif %}
+            </td>
+            <td style="text-align: right;">
+              <a href="/posts/{{ item.post_id }}/view" class="btn btn-secondary btn-sm">View</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      <div class="empty-state-title">No posts scheduled</div>
+      <p class="empty-state-text">Your queue is currently clear. Ready to write something new?</p>
+      <a href="/posts/new" class="btn btn-primary btn-sm">Schedule post</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="card">
+    <div class="card-title">
+      <span>Recent activity</span>
+    </div>
+
+    {% if recent_activity and recent_activity|length > 0 %}
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Time (IST)</th>
+            <th>Platform</th>
+            <th>Post</th>
+            <th>Status</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for act in recent_activity %}
+          <tr>
+            <td style="white-space: nowrap; font-size: 0.75rem; color: var(--text-secondary);">
+              {{ act.time_ist }}
+            </td>
+            <td>
+              <span style="font-weight: 500; text-transform: capitalize;">{{ act.platform }}</span>
+            </td>
+            <td>
+              <a href="/posts/{{ act.post_id }}/view" style="font-weight: 500;">
+                {{ act.title or act.body[:50] }}
+              </a>
+            </td>
+            <td>
+              {% if act.status == 'posted' %}
+              <span class="badge badge-posted">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Posted</span>
+              </span>
+              {% elif act.status == 'failed' %}
+              <span class="badge badge-failed">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                <span>Failed</span>
+              </span>
+              {% elif act.status == 'processing' %}
+              <span class="badge badge-sending">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line></svg>
+                <span>Sending</span>
+              </span>
+              {% elif act.status == 'cancelled' %}
+              <span class="badge badge-cancelled">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <span>Cancelled</span>
+              </span>
+              {% elif act.status == 'draft' %}
+              <span class="badge badge-draft">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                <span>Draft</span>
+              </span>
+              {% else %}
+              <span class="badge badge-scheduled">
+                <svg class="badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                <span>Scheduled</span>
+              </span>
+              {% endif %}
+            </td>
+            <td>
+              {% if act.external_id %}
+              <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary);">
+                ID: {{ act.external_id }}
+              </span>
+              {% elif act.error_message %}
+              <span style="color: var(--status-failed-text); font-size: 0.75rem;">
+                {{ act.error_message[:40] }}...
+              </span>
+              {% else %}
+              <span style="color: var(--text-muted); font-size: 0.75rem;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p class="empty-state-text">No activity recorded yet.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

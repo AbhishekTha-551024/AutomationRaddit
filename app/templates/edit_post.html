@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Post #{{ post.id }} - Social Media Post Scheduler{% endblock %}
+
+{% block content %}
+<div class="composer-container">
+
+  <!-- Left Column: Form Controls -->
+  <div class="composer-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+      <div>
+        <h1 class="page-title" style="font-size: 1.375rem; font-weight: 700;">Edit post #{{ post.id }}</h1>
+        <p class="text-secondary" style="font-size: 0.8125rem;">Modify content, media, or platforms for this post.</p>
+      </div>
+      <a href="/posts" class="btn btn-secondary btn-sm">Back to posts</a>
+    </div>
+
+    {% if is_locked %}
+    <!-- Locked Notice Banner -->
+    <div class="card" style="padding: 1rem; margin-bottom: 1.25rem; border-color: var(--status-failed-text); background: var(--status-failed-bg);">
+      <div style="display: flex; align-items: flex-start; gap: 0.625rem;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--status-failed-text); flex-shrink: 0; margin-top: 2px;">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <div>
+          <strong style="color: var(--status-failed-text); font-size: 0.875rem;">Editing locked</strong>
+          <p style="color: var(--text-primary); font-size: 0.8125rem; margin-top: 0.25rem; margin-bottom: 0.625rem;">{{ locked_reason }}</p>
+          <button type="button" class="btn btn-sm btn-primary" onclick="duplicatePost({{ post.id }})">
+            Duplicate to editable draft
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <form id="edit-post-form" onsubmit="submitEditPost(event, {{ post.id }})">
+
+      <!-- Platform Selection Chips (Add or remove targets on unpublished posts) -->
+      <div class="form-group" style="margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.375rem;">
+          <label class="form-label" style="display: block; font-weight: 500; font-size: 0.8125rem; margin-bottom: 0;">
+            Target platforms
+          </label>
+          {% if not is_locked %}
+          <div style="font-size: 0.75rem; display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" class="btn-text-link" onclick="selectOnlyPlatform('telegram')">Telegram only</button>
+            <span style="color: var(--border-subtle, #444);">|</span>
+            <button type="button" class="btn-text-link" onclick="selectAllPlatforms(true)">All</button>
+            <span style="color: var(--border-subtle, #444);">|</span>
+            <button type="button" class="btn-text-link" onclick="selectAllPlatforms(false)">Clear</button>
+          </div>
+          {% endif %}
+        </div>
+        <div class="platform-chips-group">
+          {% for p in supported_platforms %}
+          <label class="platform-chip {% if p in post.active_platforms %}selected{% endif %}">
+            <input 
+              type="checkbox" 
+              name="platform" 
+              value="{{ p }}" 
+              class="edit-platform-checkbox"
+              {% if p in post.active_platforms %}checked{% endif %}
+              {% if is_locked %}disabled{% endif %}
+            >
+            <span class="chip-label">{{ p|capitalize }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div id="edit-platform-error" class="field-error-message"></div>
+      </div>
+
+      <!-- Title Input (Optional) -->
+      <div class="form-group" style="margin-bottom: 1.25rem;">
+        <label for="edit-post-title" class="form-label" style="display: block; font-weight: 500; font-size: 0.8125rem; margin-bottom: 0.375rem;">
+          Title (optional)
+        </label>
+        <input 
+          type="text" 
+          id="edit-post-title" 
+          name="title" 
+          value="{{ post.title }}" 
+          class="form-input" 
+          placeholder="Optional headline..." 
+          style="width: 100%;"
+          {% if is_locked %}disabled{% endif %}
+        >
+      </div>
+
+      <!-- Content / Caption Textarea -->
+      <div class="form-group" style="margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.375rem;">
+          <label for="edit-post-body" class="form-label" style="font-weight: 500; font-size: 0.8125rem;">
+            Content / Caption
+          </label>
+          <div id="edit-char-meters-container" class="char-counters-bar">
+            {% for p in supported_platforms %}
+            <span class="char-meter" id="edit-meter-{{ p }}" data-platform="{{ p }}" style="display: none;"></span>
+            {% endfor %}
+          </div>
+        </div>
+
+        <textarea 
+          id="edit-post-body" 
+          name="body" 
+          rows="7" 
+          class="form-input" 
+          style="width: 100%; font-family: inherit; resize: vertical;"
+          required
+          {% if is_locked %}disabled{% endif %}
+        >{{ post.body }}</textarea>
+        <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">
+          For Threads: separate connected thread parts using <code>---</code> on a new line (max 500 chars/part).
+        </span>
+        <div id="edit-body-error" class="field-error-message"></div>
+      </div>
+
+      <!-- Media URL Input (Optional) -->
+      <div class="form-group" style="margin-bottom: 1.5rem;">
+        <label for="edit-post-media-url" class="form-label" style="display: block; font-weight: 500; font-size: 0.8125rem; margin-bottom: 0.375rem;">
+          Media URL (optional, required for Instagram)
+        </label>
+        <input 
+          type="url" 
+          id="edit-post-media-url" 
+          name="media_url" 
+          value="{{ post.media_url }}" 
+          class="form-input" 
+          placeholder="https://example.com/image.jpg" 
+          style="width: 100%;"
+          {% if is_locked %}disabled{% endif %}
+        >
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+        <a href="/posts" class="btn btn-secondary">Cancel</a>
+        {% if not is_locked %}
+        <button type="submit" id="save-edit-btn" class="btn btn-primary">
+          Save changes
+        </button>
+        {% endif %}
+      </div>
+
+    </form>
+  </div>
+
+  <!-- Right Column: Live Preview Panel -->
+  <aside class="preview-panel" aria-label="Live Post Preview">
+    <div class="preview-tabs">
+      <span style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); margin-right: auto;">Live Preview</span>
+      <span style="font-size: 0.75rem; color: var(--text-secondary);">Updates as you type</span>
+    </div>
+
+    <div id="edit-preview-single-container" class="preview-bubble">
+      <div id="edit-preview-media-container" style="display: none; margin-bottom: 0.75rem;">
+        <img id="edit-preview-media-img" alt="Attached media" style="width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);" />
+      </div>
+      <div id="edit-preview-title-text" class="preview-bubble-title" style="display: none;"></div>
+      <div id="edit-preview-body-text" style="color: var(--text-primary); white-space: pre-wrap;">
+        {{ post.body }}
+      </div>
+    </div>
+
+    <div id="edit-preview-thread-container" style="display: none;"></div>
+
+    <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); font-size: 0.75rem; color: var(--text-secondary);">
+      <p>&bull; <strong>Telegram</strong> supports bold, italic, and inline code formatting (max 4,096 chars).</p>
+      <p style="margin-top: 0.25rem;">&bull; <strong>Discord</strong> messages over 2,000 characters are clipped.</p>
+      <p style="margin-top: 0.25rem;">&bull; <strong>Threads</strong> allows 500 chars/part. Separate posts using <code>---</code> on a single line to chain a thread.</p>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}

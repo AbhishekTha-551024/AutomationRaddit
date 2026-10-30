@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics | Social Media Post Scheduler{% endblock %}
+
+{% block content %}
+<div id="analytics-root">
+
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Performance Analytics</h1>
+      <p class="page-subtitle">Threads engagement metrics, pattern analysis, and audience growth. <span style="color: var(--text-muted);">&bull; Includes posts you moved to Trash</span></p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <a href="/playbook" class="btn btn-secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        <span>View Playbook</span>
+      </a>
+      <button type="button" class="btn btn-primary" id="btn-refresh-metrics">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+        <span>Collect now</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quiet Summary Counts -->
+  <div class="stats-strip">
+    <div class="stat-item">
+      <span class="stat-number">{{ summary.total_views }}</span>
+      <span class="stat-label">Total views</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{ summary.total_likes }}</span>
+      <span class="stat-label">Likes</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{ summary.total_replies }}</span>
+      <span class="stat-label">Replies</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{ summary.total_reposts }}</span>
+      <span class="stat-label">Reposts</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">
+        {% if summary.follower_change is not none %}
+          {% if summary.follower_change > 0 %}+{{ summary.follower_change }}{% else %}{{ summary.follower_change }}{% endif %}
+        {% else %}
+          —
+        {% endif %}
+      </span>
+      <span class="stat-label">Follower change</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{ summary.average_score }}</span>
+      <span class="stat-label">Average score</span>
+    </div>
+  </div>
+
+  <!-- Low Confidence Advisory Notice -->
+  {% if summary.data_confidence == "low" %}
+  <div class="alert-banner" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-left: 4px solid var(--text-muted); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="8" x2="12" y2="12"></line>
+      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    </svg>
+    <div style="font-size: 13px; color: var(--text-secondary);">
+      <strong>Not enough posts yet.</strong> Patterns and average ratios become statistically reliable after about 20 posts with snapshots (currently {{ summary.total_posts }} of 20).
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Follower Growth Inline SVG Chart (if at least 2 data points exist) -->
+  {% if follower_snaps and follower_snaps|length >= 2 %}
+  <section class="card" style="margin-bottom: 24px;">
+    <h2 class="card-title" style="margin-bottom: 16px;">Followers Over Time</h2>
+    <div style="width: 100%; height: 140px; overflow: hidden;">
+      {% set count = follower_snaps|length %}
+      {% set min_val = follower_snaps|map(attribute='followers_count')|select('ne', None)|min or 0 %}
+      {% set max_val = follower_snaps|map(attribute='followers_count')|select('ne', None)|max or 10 %}
+      {% set val_range = (max_val - min_val) if (max_val > min_val) else 1 %}
+      <svg viewBox="0 0 600 120" style="width: 100%; height: 100%;" preserveAspectRatio="none">
+        <!-- Grid lines -->
+        <line x1="0" y1="20" x2="600" y2="20" stroke="var(--border-subtle)" stroke-dasharray="3,3" />
+        <line x1="0" y1="60" x2="600" y2="60" stroke="var(--border-subtle)" stroke-dasharray="3,3" />
+        <line x1="0" y1="100" x2="600" y2="100" stroke="var(--border-subtle)" stroke-dasharray="3,3" />
+        
+        <!-- Polyline points -->
+        <polyline
+          fill="none"
+          stroke="var(--accent)"
+          stroke-width="2.5"
+          points="{% for s in follower_snaps %}{% set x = (loop.index0 / (count - 1)) * 560 + 20 %}{% set y = 100 - (((s.followers_count or min_val) - min_val) / val_range * 80) %}{{ x }},{{ y }} {% endfor %}"
+        />
+        <!-- Data dots -->
+        {% for s in follower_snaps %}
+          {% set x = (loop.index0 / (count - 1)) * 560 + 20 %}
+          {% set y = 100 - (((s.followers_count or min_val) - min_val) / val_range * 80) %}
+          <circle cx="{{ x }}" cy="{{ y }}" r="3.5" fill="var(--bg-surface)" stroke="var(--accent)" stroke-width="2" />
+        {% endfor %}
+      </svg>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+      <span>{{ follower_snaps[0].snapshot_date }}</span>
+      <span>{{ follower_snaps[-1].snapshot_date }} (Latest: {{ follower_snaps[-1].followers_count }} followers)</span>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Posts Table Section -->
+  <section class="card" style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h2 class="card-title">Recent Posts & Engagement</h2>
+      <span style="font-size: 12px; color: var(--text-muted);">Click Score or Views column header to sort</span>
+    </div>
+
+    {% if posts and posts|length > 0 %}
+    <div class="table-responsive">
+      <table class="data-table" id="analytics-posts-table">
+        <thead>
+          <tr>
+            <th>Post</th>
+            <th>Posted (IST)</th>
+            <th class="sortable-col" data-col="views" style="cursor: pointer;">Views ↕</th>
+            <th>Likes</th>
+            <th>Replies</th>
+            <th>Reposts</th>
+            <th class="sortable-col" data-col="score" style="cursor: pointer;">Score ↕</th>
+            <th>vs Avg</th>
+            <th>Latest Snapshot</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in posts %}
+          <tr>
+            <td style="max-width: 280px;">
+              <a href="/posts/{{ p.post_id }}" style="font-weight: 500; color: var(--text-primary); text-decoration: none;">
+                {{ p.title }}
+              </a>
+            </td>
+            <td style="color: var(--text-secondary); font-size: 12px; white-space: nowrap;">
+              {{ p.posted_at_ist }}
+            </td>
+            <td data-value="{{ p.views }}" style="font-family: var(--font-mono); font-weight: 600;">
+              {{ p.views }}
+            </td>
+            <td style="font-family: var(--font-mono);">{{ p.likes }}</td>
+            <td style="font-family: var(--font-mono);">{{ p.replies }}</td>
+            <td style="font-family: var(--font-mono);">{{ p.reposts }}</td>
+            <td data-value="{{ p.score }}" style="font-family: var(--font-mono); font-weight: 600; color: var(--accent);">
+              {{ p.score }}
+            </td>
+            <td>
+              {% if p.vs_average is not none %}
+                {% if p.vs_average >= 1.2 %}
+                  <span class="badge" style="background: var(--status-posted-bg); color: var(--status-posted-text);">{{ p.vs_average }}x</span>
+                {% elif p.vs_average <= 0.8 %}
+                  <span class="badge" style="background: var(--status-failed-bg); color: var(--status-failed-text);">{{ p.vs_average }}x</span>
+                {% else %}
+                  <span class="badge" style="background: var(--bg-surface-hover); color: var(--text-secondary);">{{ p.vs_average }}x</span>
+                {% endif %}
+              {% else %}
+                <span style="color: var(--text-muted); font-size: 12px;">—</span>
+              {% endif %}
+            </td>
+            <td style="color: var(--text-muted); font-size: 12px; white-space: nowrap;">
+              {{ p.age_label }} snapshot
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding: 32px 16px; text-align: center; color: var(--text-muted);">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 8px;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <p style="font-size: 14px; font-weight: 500; color: var(--text-secondary);">No analytics snapshots collected yet</p>
+      <p style="font-size: 12px; max-width: 420px; margin: 4px auto 16px;">
+        The first performance numbers appear about an hour after a post is published, once the 1h age bucket is reached.
+      </p>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="triggerCollectMetrics()">
+        Check for due snapshots
+      </button>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- Pattern Engine Findings Section -->
+  <section class="card" style="margin-bottom: 24px;">
+    <div style="margin-bottom: 16px;">
+      <h2 class="card-title">Content Feature Patterns</h2>
+      <p style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+        Evaluated across format, opening hook, links, emojis, languages, and character count.
+      </p>
+    </div>
+
+    <!-- Verified Highlights Banner if any exist -->
+    {% if patterns.verified_findings and patterns.verified_findings|length > 0 %}
+    <div style="margin-bottom: 20px;">
+      <h3 style="font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;">
+        Verified Performance Findings
+      </h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+        {% for f in patterns.verified_findings %}
+        <div style="background: var(--bg-surface-hover); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-weight: 600; font-size: 13px;">{{ f.dimension|replace('_', ' ')|capitalize }}: {{ f.value }}</span>
+            <span class="badge" style="background: var(--accent-surface); color: var(--accent);">{{ f.ratio }}x vs median</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">{{ f.evidence }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Pattern Breakdown Tables -->
+    <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+      {% for dim_key, dim_rows in patterns.tables.items() %}
+      <div style="border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden;">
+        <div style="background: var(--bg-surface-hover); padding: 8px 12px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">
+          {{ dim_key|replace('_', ' ')|capitalize }}
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" style="font-size: 12px;">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Sample Size</th>
+                <th>Avg Score</th>
+                <th>Median</th>
+                <th>vs Average</th>
+                <th>Status / Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dim_rows %}
+              <tr>
+                <td style="font-weight: 500;">{{ row.value }}</td>
+                <td style="font-family: var(--font-mono);">{{ row.sample_size }} posts</td>
+                <td style="font-family: var(--font-mono);">{{ row.avg_score }}</td>
+                <td style="font-family: var(--font-mono);">{{ row.median_score }}</td>
+                <td>
+                  {% if row.avg_vs_average is not none %}
+                    {{ row.avg_vs_average }}x
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.confidence == "high" %}
+                    <span class="badge" style="background: var(--status-posted-bg); color: var(--status-posted-text);">
+                      ✓ High ({{ row.sample_size }} posts)
+                    </span>
+                  {% elif row.confidence == "medium" %}
+                    <span class="badge" style="background: var(--accent-surface); color: var(--accent);">
+                      • Medium ({{ row.sample_size }} posts)
+                    </span>
+                  {% else %}
+                    <span class="badge" style="background: var(--bg-surface-hover); color: var(--text-muted);">
+                      ⚠ Low (insufficient data)
+                    </span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Weekly AI Analyst Section -->
+  <section class="card" style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+      <div>
+        <h2 class="card-title">Weekly AI Content Analyst</h2>
+        <p style="font-size: 12px; color: var(--text-secondary);">
+          Automated quantitative audit via xAI Grok. Runs Sundays at 09:00 AM IST.
+        </p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-run-analyst">
+        <span>Run analyst now</span>
+      </button>
+    </div>
+
+    <!-- Status Strip -->
+    <div style="background: var(--bg-surface-hover); border-radius: var(--radius-md); padding: 10px 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div>
+        <strong>Status:</strong> {{ analyst_status.message }}
+      </div>
+      <div>
+        <strong>Monthly Spend:</strong> ${{ "%.4f"|format(analyst_status.current_spend) }} / ${{ "%.2f"|format(analyst_status.budget) }} USD
+      </div>
+    </div>
+
+    {% if latest_report %}
+    <div style="border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 12px; color: var(--text-muted);">
+        <span>Latest Report #{{ latest_report.id }} ({{ latest_report.model }})</span>
+        <span>Cost: ${{ "%.4f"|format(latest_report.cost) }}</span>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: var(--text-primary); margin-bottom: 14px;">
+        {{ latest_report.summary_text }}
+      </p>
+
+      {% if report_findings and report_findings.experiment_ideas %}
+      <div style="margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 10px;">
+        <h4 style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px;">
+          Proposed Experiment Hypotheses
+        </h4>
+        <ul style="padding-left: 18px; font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+          {% for exp in report_findings.experiment_ideas %}
+          <li>{{ exp }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+      No AI analysis report has run yet. It will run automatically once at least 20 posts have been scored.
+    </p>
+    {% endif %}
+  </section>
+
+</div>
+
+<script>
+// Plain JS sorting for analytics posts table
+document.addEventListener("DOMContentLoaded", () => {
+  const table = document.getElementById("analytics-posts-table");
+  if (!table) return;
+
+  const headers = table.querySelectorAll("th.sortable-col");
+  let sortDirection = -1; // default desc
+
+  headers.forEach(header => {
+    header.addEventListener("click", () => {
+      const col = header.dataset.col;
+      const tbody = table.querySelector("tbody");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+
+      rows.sort((a, b) => {
+        const valA = parseFloat(a.querySelector(`td[data-value]` + (col === 'views' ? ':nth-child(3)' : ':nth-child(7)'))?.dataset?.value || 0);
+        const valB = parseFloat(b.querySelector(`td[data-value]` + (col === 'views' ? ':nth-child(3)' : ':nth-child(7)'))?.dataset?.value || 0);
+        return (valA - valB) * sortDirection;
+      });
+
+      sortDirection *= -1;
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+
+  const btnRefresh = document.getElementById("btn-refresh-metrics");
+  if (btnRefresh) {
+    btnRefresh.addEventListener("click", async () => {
+      btnRefresh.disabled = true;
+      btnRefresh.textContent = "Collecting...";
+      try {
+        const res = await fetch("/dev/collect-metrics", { method: "POST" });
+        const data = await res.json();
+        alert(`Metrics collection complete. Saved ${data.saved_snapshots || 0} snapshot(s).`);
+        window.location.reload();
+      } catch (err) {
+        alert("Collection failed: " + err);
+      } finally {
+        btnRefresh.disabled = false;
+        btnRefresh.textContent = "Collect now";
+      }
+    });
+  }
+
+  const btnAnalyst = document.getElementById("btn-run-analyst");
+  if (btnAnalyst) {
+    btnAnalyst.addEventListener("click", async () => {
+      btnAnalyst.disabled = true;
+      btnAnalyst.textContent = "Analyzing...";
+      try {
+        const res = await fetch("/dev/run-analyst", { method: "POST" });
+        const data = await res.json();
+        if (data.status === "success") {
+          alert(`AI Analyst finished report #${data.report_id}. Created ${data.suggested_rules_created} suggested rules.`);
+          window.location.reload();
+        } else {
+          alert(`AI Analyst notice: ${data.message || data.status}`);
+        }
+      } catch (err) {
+        alert("Analyst failed: " + err);
+      } finally {
+        btnAnalyst.disabled = false;
+        btnAnalyst.textContent = "Run analyst now";
+      }
+    });
+  }
+});
+</script>
+{% endblock %}
+
